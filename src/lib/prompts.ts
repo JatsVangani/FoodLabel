@@ -1,8 +1,8 @@
-export type HealthProfile = 
-  | "diabetes" 
-  | "hypertension" 
-  | "nut_allergy" 
-  | "gluten_intolerance" 
+export type HealthProfile =
+  | "diabetes"
+  | "hypertension"
+  | "nut_allergy"
+  | "gluten_intolerance"
   | "dairy_allergy";
 
 export const PROFILE_LABELS: Record<HealthProfile, string> = {
@@ -37,6 +37,11 @@ Rules:
 Response format:
 {"verdict":"good|okay|avoid","reason":"One sentence reason.","flags":["flag1","flag2"]}`;
 
+export const SUGGEST_SYSTEM_PROMPT = `You are a clinical nutritionist AI that recommends healthier food alternatives.
+Given a food product that was analyzed, suggest 3 specific healthier alternatives that address the detected concerns.
+Tailor suggestions to the user's health profile. Be practical — suggest real, commonly available products or foods.
+Output ONLY valid JSON with no additional text or markdown.`;
+
 export function buildUserPrompt(
   content: string,
   profile: HealthProfile[]
@@ -52,4 +57,30 @@ Food Label Data:
 ${content}
 
 Analyze this food label for the given health profile and respond with JSON only.`;
+}
+
+export function buildSuggestPrompt(
+  originalLabel: string,
+  verdict: string,
+  flags: string[],
+  profile: HealthProfile[]
+): string {
+  const profileStr =
+    profile.length > 0
+      ? profile.map((p) => PROFILE_LABELS[p]).join(", ")
+      : "General population (no specific conditions)";
+
+  const flagStr = flags.length > 0
+    ? flags.map((f) => FLAG_LABELS[f] ?? f).join(", ")
+    : "none";
+
+  return `User Health Profile: ${profileStr}
+
+Original Food Label:
+${originalLabel}
+
+Analysis Verdict: ${verdict}
+Detected Concerns: ${flagStr}
+
+Suggest 3 healthier alternatives to this food and one actionable nutrition tip. Respond with JSON only.`;
 }

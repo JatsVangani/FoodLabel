@@ -3,7 +3,9 @@ import {
   PROFILE_LABELS,
   FLAG_LABELS,
   SYSTEM_PROMPT,
+  SUGGEST_SYSTEM_PROMPT,
   buildUserPrompt,
+  buildSuggestPrompt,
   type HealthProfile,
 } from "@/lib/prompts";
 
@@ -20,7 +22,6 @@ describe("PROFILE_LABELS", () => {
 
   it("each label includes an emoji", () => {
     for (const label of Object.values(PROFILE_LABELS)) {
-      // Emoji characters are outside basic ASCII range
       expect(label).not.toMatch(/^[a-zA-Z\s]+$/);
     }
   });
@@ -68,6 +69,17 @@ describe("SYSTEM_PROMPT", () => {
   });
 });
 
+describe("SUGGEST_SYSTEM_PROMPT", () => {
+  it("instructs the model to recommend healthier alternatives", () => {
+    expect(SUGGEST_SYSTEM_PROMPT).toContain("healthier");
+    expect(SUGGEST_SYSTEM_PROMPT).toContain("alternatives");
+  });
+
+  it("instructs JSON-only output", () => {
+    expect(SUGGEST_SYSTEM_PROMPT).toContain("JSON");
+  });
+});
+
 describe("buildUserPrompt", () => {
   it("includes health profile labels when profile is provided", () => {
     const profile: HealthProfile[] = ["diabetes", "nut_allergy"];
@@ -103,5 +115,44 @@ describe("buildUserPrompt", () => {
     expect(result).toContain(PROFILE_LABELS.diabetes);
     expect(result).toContain(PROFILE_LABELS.hypertension);
     expect(result).toContain(PROFILE_LABELS.dairy_allergy);
+  });
+});
+
+describe("buildSuggestPrompt", () => {
+  it("includes the original label and verdict", () => {
+    const result = buildSuggestPrompt(
+      "Ingredients: Sugar, Salt",
+      "avoid",
+      ["high_sugar"],
+      []
+    );
+    expect(result).toContain("Ingredients: Sugar, Salt");
+    expect(result).toContain("avoid");
+  });
+
+  it("includes human-readable flag labels", () => {
+    const result = buildSuggestPrompt(
+      "test",
+      "okay",
+      ["high_sodium", "high_sugar"],
+      []
+    );
+    expect(result).toContain("High Sodium");
+    expect(result).toContain("High Sugar");
+  });
+
+  it("includes health profile when provided", () => {
+    const result = buildSuggestPrompt(
+      "test",
+      "avoid",
+      [],
+      ["diabetes"]
+    );
+    expect(result).toContain(PROFILE_LABELS.diabetes);
+  });
+
+  it("shows 'none' when no flags detected", () => {
+    const result = buildSuggestPrompt("test", "good", [], []);
+    expect(result).toContain("Detected Concerns: none");
   });
 });

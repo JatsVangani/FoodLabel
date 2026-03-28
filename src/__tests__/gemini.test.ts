@@ -12,9 +12,16 @@ vi.mock("@google/generative-ai", () => {
     HarmCategory: {
       HARM_CATEGORY_HARASSMENT: "HARM_CATEGORY_HARASSMENT",
       HARM_CATEGORY_HATE_SPEECH: "HARM_CATEGORY_HATE_SPEECH",
+      HARM_CATEGORY_SEXUALLY_EXPLICIT: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      HARM_CATEGORY_DANGEROUS_CONTENT: "HARM_CATEGORY_DANGEROUS_CONTENT",
     },
     HarmBlockThreshold: {
       BLOCK_NONE: "BLOCK_NONE",
+    },
+    SchemaType: {
+      OBJECT: "OBJECT",
+      STRING: "STRING",
+      ARRAY: "ARRAY",
     },
   };
 });
@@ -154,6 +161,76 @@ describe("gemini module", () => {
       const result = await analyzeImage("/9j/4AAQ", "image/png", []);
 
       expect(result.verdict).toBe("good");
+    });
+  });
+
+  describe("suggestAlternatives", () => {
+    it("returns parsed suggestions", async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () =>
+            JSON.stringify({
+              alternatives: [
+                { name: "Greek Yogurt", why: "Lower sugar" },
+                { name: "Fresh Fruit", why: "Natural sugars" },
+                { name: "Oatmeal", why: "Complex carbs" },
+              ],
+              tip: "Read the label carefully.",
+            }),
+        },
+      });
+
+      const { suggestAlternatives } = await import("@/lib/gemini");
+      const result = await suggestAlternatives(
+        "Ingredients: Sugar, Salt",
+        "avoid",
+        ["high_sugar"],
+        ["diabetes"]
+      );
+
+      expect(result.alternatives).toHaveLength(3);
+      expect(result.alternatives[0].name).toBe("Greek Yogurt");
+      expect(result.tip).toContain("label");
+    });
+
+    it("limits alternatives to 3 items", async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () =>
+            JSON.stringify({
+              alternatives: [
+                { name: "A", why: "a" },
+                { name: "B", why: "b" },
+                { name: "C", why: "c" },
+                { name: "D", why: "d" },
+              ],
+              tip: "Tip.",
+            }),
+        },
+      });
+
+      const { suggestAlternatives } = await import("@/lib/gemini");
+      const result = await suggestAlternatives("test", "okay", [], []);
+
+      expect(result.alternatives).toHaveLength(3);
+    });
+
+    it("defaults empty alternatives gracefully", async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () =>
+            JSON.stringify({
+              alternatives: null,
+              tip: "",
+            }),
+        },
+      });
+
+      const { suggestAlternatives } = await import("@/lib/gemini");
+      const result = await suggestAlternatives("test", "good", [], []);
+
+      expect(result.alternatives).toEqual([]);
+      expect(result.tip).toBe("");
     });
   });
 

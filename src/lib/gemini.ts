@@ -2,8 +2,11 @@ import {
   GoogleGenerativeAI,
   HarmCategory,
   HarmBlockThreshold,
+  SchemaType,
+  type GenerationConfig,
+  type SafetySetting,
 } from "@google/generative-ai";
-import { SYSTEM_PROMPT, buildUserPrompt, type HealthProfile } from "./prompts";
+import { SYSTEM_PROMPT, SUGGEST_SYSTEM_PROMPT, buildUserPrompt, buildSuggestPrompt, type HealthProfile } from "./prompts";
 
 export type Verdict = "good" | "okay" | "avoid";
 
@@ -13,7 +16,18 @@ export interface AnalysisResult {
   flags: string[];
 }
 
-const safetySettings = [
+export interface Suggestion {
+  name: string;
+  why: string;
+}
+
+export interface SuggestResult {
+  alternatives: Suggestion[];
+  tip: string;
+}
+
+/* ── Safety: block nothing so food-related content is never filtered ── */
+const safetySettings: SafetySetting[] = [
   {
     category: HarmCategory.HARM_CATEGORY_HARASSMENT,
     threshold: HarmBlockThreshold.BLOCK_NONE,
@@ -22,16 +36,108 @@ const safetySettings = [
     category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
     threshold: HarmBlockThreshold.BLOCK_NONE,
   },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
 ];
 
+/* ── Generation config: low temperature for consistent, deterministic results ── */
+const analysisGenerationConfig: GenerationConfig = {
+  temperature: 0.2,
+  topK: 40,
+  topP: 0.8,
+  maxOutputTokens: 256,
+  responseMimeType: "application/json",
+  responseSchema: {
+    type: SchemaType.OBJECT,
+    properties: {
+      verdict: {
+        type: SchemaType.STRING,
+        format: "enum",
+        enum: ["good", "okay", "avoid"],
+        description: "Health verdict for the food",
+      },
+      reason: {
+        type: SchemaType.STRING,
+        description: "One concise sentence explaining the verdict, max 20 words",
+      },
+      flags: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.STRING,
+          format: "enum",
+          enum: [
+            "high_sugar",
+            "high_sodium",
+            "high_saturated_fat",
+            "refined_carbs",
+            "artificial_additives",
+            "allergen_nuts",
+            "allergen_gluten",
+            "allergen_dairy",
+          ],
+        },
+        description: "Array of detected health concern flags",
+      },
+    },
+    required: ["verdict", "reason", "flags"],
+  },
+};
+
+const suggestGenerationConfig: GenerationConfig = {
+  temperature: 0.6,
+  topK: 40,
+  topP: 0.9,
+  maxOutputTokens: 512,
+  responseMimeType: "application/json",
+  responseSchema: {
+    type: SchemaType.OBJECT,
+    properties: {
+      alternatives: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            name: {
+              type: SchemaType.STRING,
+              description: "Name of the healthier alternative product or food",
+            },
+            why: {
+              type: SchemaType.STRING,
+              description: "Brief reason why this is a better choice, max 15 words",
+            },
+          },
+          required: ["name", "why"],
+        },
+        description: "List of 3 healthier alternative foods",
+      },
+      tip: {
+        type: SchemaType.STRING,
+        description: "One actionable nutrition tip for the user, max 25 words",
+      },
+    },
+    required: ["alternatives", "tip"],
+  },
+};
+
+/* ── Client singleton ── */
+let _client: GoogleGenerativeAI | null = null;
+
 function getClient(): GoogleGenerativeAI {
+  if (_client) return _client;
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-  return new GoogleGenerativeAI(apiKey);
+  _client = new GoogleGenerativeAI(apiKey);
+  return _client;
 }
 
-function parseResult(raw: string): AnalysisResult {
-  // Strip any markdown code fences or extra whitespace
+/* ── Parse helpers ── */
+function parseAnalysis(raw: string): AnalysisResult {
   const cleaned = raw.trim().replace(/^```json\n?|```$/g, "").trim();
   const parsed = JSON.parse(cleaned);
 
@@ -47,6 +153,22 @@ function parseResult(raw: string): AnalysisResult {
   };
 }
 
+function parseSuggestions(raw: string): SuggestResult {
+  const cleaned = raw.trim().replace(/^```json\n?|```$/g, "").trim();
+  const parsed = JSON.parse(cleaned);
+
+  return {
+    alternatives: Array.isArray(parsed.alternatives)
+      ? parsed.alternatives.slice(0, 3).map((a: { name?: string; why?: string }) => ({
+          name: String(a.name || "Unknown"),
+          why: String(a.why || ""),
+        }))
+      : [],
+    tip: String(parsed.tip || ""),
+  };
+}
+
+/* ── Analysis endpoints ── */
 export async function analyzeText(
   content: string,
   profile: HealthProfile[]
@@ -56,11 +178,12 @@ export async function analyzeText(
     model: "gemini-2.0-flash",
     systemInstruction: SYSTEM_PROMPT,
     safetySettings,
+    generationConfig: analysisGenerationConfig,
   });
 
   const result = await model.generateContent(buildUserPrompt(content, profile));
   const text = result.response.text();
-  return parseResult(text);
+  return parseAnalysis(text);
 }
 
 export async function analyzeImage(
@@ -73,9 +196,9 @@ export async function analyzeImage(
     model: "gemini-2.0-flash",
     systemInstruction: SYSTEM_PROMPT,
     safetySettings,
+    generationConfig: analysisGenerationConfig,
   });
 
-  // Strip the data URL prefix if present
   const base64Data = imageBase64.includes(",")
     ? imageBase64.split(",")[1]
     : imageBase64;
@@ -94,5 +217,26 @@ export async function analyzeImage(
   ]);
 
   const text = result.response.text();
-  return parseResult(text);
+  return parseAnalysis(text);
+}
+
+/* ── Suggestion endpoint: healthier alternatives via Gemini ── */
+export async function suggestAlternatives(
+  originalLabel: string,
+  verdict: Verdict,
+  flags: string[],
+  profile: HealthProfile[]
+): Promise<SuggestResult> {
+  const client = getClient();
+  const model = client.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: SUGGEST_SYSTEM_PROMPT,
+    safetySettings,
+    generationConfig: suggestGenerationConfig,
+  });
+
+  const prompt = buildSuggestPrompt(originalLabel, verdict, flags, profile);
+  const result = await model.generateContent(prompt);
+  const text = result.response.text();
+  return parseSuggestions(text);
 }
