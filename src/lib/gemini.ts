@@ -136,6 +136,25 @@ function getClient(): GoogleGenerativeAI {
   return _client;
 }
 
+/* ── Extract text from response, handling thinking models ── */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractText(response: any): string {
+  // For thinking models, iterate parts and skip thought parts
+  const parts = response.candidates?.[0]?.content?.parts;
+  if (parts && Array.isArray(parts)) {
+    // Find the last non-thought text part (the actual model output)
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      if (part.thought) continue;
+      if (part.text) return part.text;
+    }
+  }
+  // Fallback to .text()
+  const direct = response.text();
+  if (direct) return direct;
+  throw new Error("Empty response from Gemini");
+}
+
 /* ── Parse helpers ── */
 function parseAnalysis(raw: string): AnalysisResult {
   const cleaned = raw.trim().replace(/^```json\n?|```$/g, "").trim();
@@ -182,7 +201,7 @@ export async function analyzeText(
   });
 
   const result = await model.generateContent(buildUserPrompt(content, profile));
-  const text = result.response.text();
+  const text = extractText(result.response);
   return parseAnalysis(text);
 }
 
@@ -216,7 +235,7 @@ export async function analyzeImage(
     ),
   ]);
 
-  const text = result.response.text();
+  const text = extractText(result.response);
   return parseAnalysis(text);
 }
 
@@ -237,6 +256,6 @@ export async function suggestAlternatives(
 
   const prompt = buildSuggestPrompt(originalLabel, verdict, flags, profile);
   const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const text = extractText(result.response);
   return parseSuggestions(text);
 }
