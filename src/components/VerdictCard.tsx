@@ -1,6 +1,6 @@
 "use client";
 
-import { FLAG_LABELS, type HealthProfile } from "@/lib/prompts";
+import { FLAG_LABELS } from "@/lib/prompts";
 
 type Verdict = "good" | "okay" | "avoid";
 
@@ -8,7 +8,6 @@ interface VerdictCardProps {
   verdict: Verdict;
   reason: string;
   flags: string[];
-  profile: HealthProfile[];
 }
 
 const verdictConfig = {

@@ -1,4 +1,5 @@
 import { ImageAnnotatorClient } from "@google-cloud/vision";
+import { stripBase64Prefix } from "./utils";
 
 /**
  * Google Cloud Vision — OCR text extraction from food label images.
@@ -26,9 +27,7 @@ export async function extractTextFromImage(
   mimeType: string = "image/jpeg"
 ): Promise<OcrResult> {
   const client = getVisionClient();
-  const base64Data = imageBase64.includes(",")
-    ? imageBase64.split(",")[1]
-    : imageBase64;
+  const base64Data = stripBase64Prefix(imageBase64);
 
   const [result] = await client.textDetection({
     image: { content: base64Data },
@@ -52,9 +51,7 @@ export async function detectFoodLabels(
   imageBase64: string
 ): Promise<string[]> {
   const client = getVisionClient();
-  const base64Data = imageBase64.includes(",")
-    ? imageBase64.split(",")[1]
-    : imageBase64;
+  const base64Data = stripBase64Prefix(imageBase64);
 
   const [result] = await client.labelDetection({
     image: { content: base64Data },

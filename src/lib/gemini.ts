@@ -4,9 +4,12 @@ import {
   HarmBlockThreshold,
   SchemaType,
   type GenerationConfig,
+  type GenerativeModel,
   type SafetySetting,
 } from "@google/generative-ai";
 import { SYSTEM_PROMPT, SUGGEST_SYSTEM_PROMPT, buildUserPrompt, buildSuggestPrompt, type HealthProfile } from "./prompts";
+import { GEMINI_MODEL } from "./constants";
+import { stripBase64Prefix, cleanJsonResponse } from "./utils";
 
 export type Verdict = "good" | "okay" | "avoid";
 
@@ -155,10 +158,22 @@ function extractText(response: any): string {
   throw new Error("Empty response from Gemini");
 }
 
+/* ── Model factory ── */
+function createModel(
+  systemInstruction: string,
+  generationConfig: GenerationConfig
+): GenerativeModel {
+  return getClient().getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction,
+    safetySettings,
+    generationConfig,
+  });
+}
+
 /* ── Parse helpers ── */
 function parseAnalysis(raw: string): AnalysisResult {
-  const cleaned = raw.trim().replace(/^```json\n?|```$/g, "").trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = JSON.parse(cleanJsonResponse(raw));
 
   const verdict = parsed.verdict;
   if (!["good", "okay", "avoid"].includes(verdict)) {
@@ -173,8 +188,7 @@ function parseAnalysis(raw: string): AnalysisResult {
 }
 
 function parseSuggestions(raw: string): SuggestResult {
-  const cleaned = raw.trim().replace(/^```json\n?|```$/g, "").trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = JSON.parse(cleanJsonResponse(raw));
 
   return {
     alternatives: Array.isArray(parsed.alternatives)
@@ -192,17 +206,9 @@ export async function analyzeText(
   content: string,
   profile: HealthProfile[]
 ): Promise<AnalysisResult> {
-  const client = getClient();
-  const model = client.getGenerativeModel({
-    model: "gemini-2.5-flash-lite",
-    systemInstruction: SYSTEM_PROMPT,
-    safetySettings,
-    generationConfig: analysisGenerationConfig,
-  });
-
+  const model = createModel(SYSTEM_PROMPT, analysisGenerationConfig);
   const result = await model.generateContent(buildUserPrompt(content, profile));
-  const text = extractText(result.response);
-  return parseAnalysis(text);
+  return parseAnalysis(extractText(result.response));
 }
 
 export async function analyzeImage(
@@ -210,22 +216,11 @@ export async function analyzeImage(
   mimeType: string,
   profile: HealthProfile[]
 ): Promise<AnalysisResult> {
-  const client = getClient();
-  const model = client.getGenerativeModel({
-    model: "gemini-2.5-flash-lite",
-    systemInstruction: SYSTEM_PROMPT,
-    safetySettings,
-    generationConfig: analysisGenerationConfig,
-  });
-
-  const base64Data = imageBase64.includes(",")
-    ? imageBase64.split(",")[1]
-    : imageBase64;
-
+  const model = createModel(SYSTEM_PROMPT, analysisGenerationConfig);
   const result = await model.generateContent([
     {
       inlineData: {
-        data: base64Data,
+        data: stripBase64Prefix(imageBase64),
         mimeType,
       },
     },
@@ -235,8 +230,7 @@ export async function analyzeImage(
     ),
   ]);
 
-  const text = extractText(result.response);
-  return parseAnalysis(text);
+  return parseAnalysis(extractText(result.response));
 }
 
 /* ── Suggestion endpoint: healthier alternatives via Gemini ── */
@@ -246,16 +240,9 @@ export async function suggestAlternatives(
   flags: string[],
   profile: HealthProfile[]
 ): Promise<SuggestResult> {
-  const client = getClient();
-  const model = client.getGenerativeModel({
-    model: "gemini-2.5-flash-lite",
-    systemInstruction: SUGGEST_SYSTEM_PROMPT,
-    safetySettings,
-    generationConfig: suggestGenerationConfig,
-  });
-
-  const prompt = buildSuggestPrompt(originalLabel, verdict, flags, profile);
-  const result = await model.generateContent(prompt);
-  const text = extractText(result.response);
-  return parseSuggestions(text);
+  const model = createModel(SUGGEST_SYSTEM_PROMPT, suggestGenerationConfig);
+  const result = await model.generateContent(
+    buildSuggestPrompt(originalLabel, verdict, flags, profile)
+  );
+  return parseSuggestions(extractText(result.response));
 }

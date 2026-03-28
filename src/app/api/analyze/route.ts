@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeText, analyzeImage } from "@/lib/gemini";
 import type { HealthProfile } from "@/lib/prompts";
+import { VALID_HEALTH_PROFILES } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { mode, content, imageBase64, mimeType, profile } = body;
 
-    const healthProfile: HealthProfile[] = Array.isArray(profile) ? profile : [];
+    const healthProfile: HealthProfile[] = Array.isArray(profile)
+      ? profile.filter((p: string): p is HealthProfile =>
+          VALID_HEALTH_PROFILES.includes(p as HealthProfile)
+        )
+      : [];
 
     if (mode === "image") {
       if (!imageBase64) {

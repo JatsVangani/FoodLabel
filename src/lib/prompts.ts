@@ -42,16 +42,17 @@ Given a food product that was analyzed, suggest 3 specific healthier alternative
 Tailor suggestions to the user's health profile. Be practical — suggest real, commonly available products or foods.
 Output ONLY valid JSON with no additional text or markdown.`;
 
+function formatProfile(profile: HealthProfile[]): string {
+  return profile.length > 0
+    ? profile.map((p) => PROFILE_LABELS[p]).join(", ")
+    : "General population (no specific conditions)";
+}
+
 export function buildUserPrompt(
   content: string,
   profile: HealthProfile[]
 ): string {
-  const profileStr =
-    profile.length > 0
-      ? profile.map((p) => PROFILE_LABELS[p]).join(", ")
-      : "General population (no specific conditions)";
-
-  return `User Health Profile: ${profileStr}
+  return `User Health Profile: ${formatProfile(profile)}
 
 Food Label Data:
 ${content}
@@ -65,16 +66,11 @@ export function buildSuggestPrompt(
   flags: string[],
   profile: HealthProfile[]
 ): string {
-  const profileStr =
-    profile.length > 0
-      ? profile.map((p) => PROFILE_LABELS[p]).join(", ")
-      : "General population (no specific conditions)";
-
   const flagStr = flags.length > 0
     ? flags.map((f) => FLAG_LABELS[f] ?? f).join(", ")
     : "none";
 
-  return `User Health Profile: ${profileStr}
+  return `User Health Profile: ${formatProfile(profile)}
 
 Original Food Label:
 ${originalLabel}

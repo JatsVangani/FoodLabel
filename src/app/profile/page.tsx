@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PROFILE_LABELS, type HealthProfile } from "@/lib/prompts";
+import { STORAGE_KEY_PROFILE } from "@/lib/constants";
 import Link from "next/link";
 
 const ALL_PROFILES: HealthProfile[] = [
@@ -26,9 +27,11 @@ export default function ProfilePage() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("health_profile");
+      const stored = localStorage.getItem(STORAGE_KEY_PROFILE);
       if (stored) setSelected(JSON.parse(stored));
-    } catch {}
+    } catch (e) {
+      console.warn("Failed to load health profile from localStorage:", e);
+    }
   }, []);
 
   function toggle(profile: HealthProfile) {
@@ -41,7 +44,7 @@ export default function ProfilePage() {
   }
 
   function save() {
-    localStorage.setItem("health_profile", JSON.stringify(selected));
+    localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(selected));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }

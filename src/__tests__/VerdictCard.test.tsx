@@ -9,8 +9,7 @@ describe("VerdictCard", () => {
         verdict="good"
         reason="Low sugar and sodium."
         flags={[]}
-        profile={[]}
-      />
+              />
     );
     expect(screen.getByText("Good Choice")).toBeDefined();
     expect(screen.getByText("Low sugar and sodium.")).toBeDefined();
@@ -23,8 +22,7 @@ describe("VerdictCard", () => {
         verdict="okay"
         reason="Moderate sodium content."
         flags={["high_sodium"]}
-        profile={[]}
-      />
+              />
     );
     expect(screen.getByText("Okay in Moderation")).toBeDefined();
     expect(screen.getByText("⚠️")).toBeDefined();
@@ -36,7 +34,6 @@ describe("VerdictCard", () => {
         verdict="avoid"
         reason="Very high sugar."
         flags={["high_sugar"]}
-        profile={["diabetes"]}
       />
     );
     expect(screen.getByText("Avoid")).toBeDefined();
@@ -49,7 +46,6 @@ describe("VerdictCard", () => {
         verdict="avoid"
         reason="Multiple issues."
         flags={["high_sugar", "high_sodium", "allergen_nuts"]}
-        profile={["nut_allergy"]}
       />
     );
     expect(screen.getByText("High Sugar")).toBeDefined();
@@ -60,7 +56,7 @@ describe("VerdictCard", () => {
 
   it("does not render concerns section when flags are empty", () => {
     render(
-      <VerdictCard verdict="good" reason="All clear." flags={[]} profile={[]} />
+      <VerdictCard verdict="good" reason="All clear." flags={[]} />
     );
     expect(screen.queryByText("Detected Concerns")).toBeNull();
   });
@@ -71,15 +67,14 @@ describe("VerdictCard", () => {
         verdict="okay"
         reason="Some concern."
         flags={["unknown_flag"]}
-        profile={[]}
-      />
+              />
     );
     expect(screen.getByText("unknown_flag")).toBeDefined();
   });
 
   it("has correct accessibility role and label", () => {
     render(
-      <VerdictCard verdict="good" reason="Fine." flags={[]} profile={[]} />
+      <VerdictCard verdict="good" reason="Fine." flags={[]} />
     );
     const region = screen.getByRole("region");
     expect(region).toHaveAttribute("aria-label", "Health verdict result");

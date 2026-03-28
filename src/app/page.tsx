@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import LabelInput from "@/components/LabelInput";
 import VerdictCard from "@/components/VerdictCard";
 import HealthProfileBadge from "@/components/HealthProfileBadge";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SuggestionsCard from "@/components/SuggestionsCard";
 import type { HealthProfile } from "@/lib/prompts";
+import { STORAGE_KEY_PROFILE } from "@/lib/constants";
 
 interface AnalysisResult {
   verdict: "good" | "okay" | "avoid";
@@ -30,51 +31,64 @@ export default function HomePage() {
 
   // Track the last submitted label text for suggestions
   const lastLabelRef = useRef<string>("");
+  // Abort controller to cancel in-flight requests when a new one starts
+  const abortRef = useRef<AbortController | null>(null);
 
   // Load profile from localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("health_profile");
+      const stored = localStorage.getItem(STORAGE_KEY_PROFILE);
       if (stored) setProfile(JSON.parse(stored));
-    } catch {}
+    } catch (e) {
+      console.warn("Failed to load health profile from localStorage:", e);
+    }
   }, []);
 
-  async function handleAnalyze(
-    mode: "text" | "image",
-    content?: string,
-    imageBase64?: string,
-    mimeType?: string
-  ) {
-    setLoading(true);
-    setResult(null);
-    setError(null);
-    setSuggestions(null);
+  const handleAnalyze = useCallback(
+    async (
+      mode: "text" | "image",
+      content?: string,
+      imageBase64?: string,
+      mimeType?: string
+    ) => {
+      // Cancel any in-flight analysis request
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    // Store the label text for use in suggestions
-    lastLabelRef.current = content || "Food label from uploaded image";
+      setLoading(true);
+      setResult(null);
+      setError(null);
+      setSuggestions(null);
 
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, content, imageBase64, mimeType, profile }),
-      });
+      lastLabelRef.current = content || "Food label from uploaded image";
 
-      const data = await res.json();
+      try {
+        const res = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode, content, imageBase64, mimeType, profile }),
+          signal: controller.signal,
+        });
 
-      if (!res.ok) {
-        throw new Error(data.error || "Analysis failed");
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || "Analysis failed");
+        }
+
+        setResult(data);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      } finally {
+        setLoading(false);
       }
+    },
+    [profile]
+  );
 
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleGetSuggestions() {
+  const handleGetSuggestions = useCallback(async () => {
     if (!result) return;
 
     setSuggestLoading(true);
@@ -102,7 +116,7 @@ export default function HomePage() {
     } finally {
       setSuggestLoading(false);
     }
-  }
+  }, [result, profile]);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
@@ -163,7 +177,6 @@ export default function HomePage() {
             verdict={result.verdict}
             reason={result.reason}
             flags={result.flags}
-            profile={profile}
           />
 
           {/* Suggestions CTA */}
