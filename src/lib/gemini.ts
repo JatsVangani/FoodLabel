@@ -175,7 +175,7 @@ export async function analyzeText(
 ): Promise<AnalysisResult> {
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     systemInstruction: SYSTEM_PROMPT,
     safetySettings,
     generationConfig: analysisGenerationConfig,
@@ -193,7 +193,7 @@ export async function analyzeImage(
 ): Promise<AnalysisResult> {
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     systemInstruction: SYSTEM_PROMPT,
     safetySettings,
     generationConfig: analysisGenerationConfig,
@@ -229,7 +229,7 @@ export async function suggestAlternatives(
 ): Promise<SuggestResult> {
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     systemInstruction: SUGGEST_SYSTEM_PROMPT,
     safetySettings,
     generationConfig: suggestGenerationConfig,
