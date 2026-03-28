@@ -5,9 +5,8 @@ FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
-# Ensure lightningcss has the correct platform binary for linux
-RUN npx @aspect-build/rules_js_npm_translate_lock 2>/dev/null || true
-RUN npm install lightningcss-linux-x64-gnu 2>/dev/null || true
+# Install linux-specific native binaries needed for the build
+RUN npm install @tailwindcss/oxide-linux-x64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true
 
 # Build
 FROM base AS builder
@@ -17,8 +16,8 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Install the linux-specific lightningcss binary for the build
-RUN npm install lightningcss-linux-x64-gnu 2>/dev/null || true
+# Install linux-specific native binaries for the build
+RUN npm install @tailwindcss/oxide-linux-x64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true
 RUN npm run build
 
 # Production runner
